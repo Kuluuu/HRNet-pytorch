@@ -33,13 +33,13 @@ def fliplr_joints(joints, joints_vis, width, matched_parts):
     """翻转关节点（常在图片翻转后做）
 
     Args:
-        joints (_type_): 关节点坐标
-        joints_vis (_type_): 关节点可视程度
-        width (_type_): 图片的宽度（水平翻转需要宽度）
-        matched_parts (_type_): _description_
+        joints (array[16, 3]): 关节点坐标
+        joints_vis (array[16, 3]): 关节点可视程度
+        width (int): 图片的宽度（水平翻转需要宽度）
+        matched_parts (array): _description_
 
     Returns:
-        _type_: joints*joints_vis, joints_vis
+        关节点有关信息的array: joints*joints_vis, joints_vis
     """
     # Flip horizontal
     joints[:, 0] = width - joints[:, 0] - 1
@@ -71,42 +71,45 @@ def get_affine_transform(
     """生成仿射变换矩阵
 
     Args:
-        center (array): 待检测人物的中心点
-        scale (_type_): 缩放因子
-        rot (_type_): 旋转角度
-        output_size (array): 变换后输出的大小
-        shift (_type_, optional): _description_. Defaults to np.array([0, 0], dtype=np.float32).
+        center (array[2,]): 待检测人物的中心点
+        scale (float): 缩放因子
+        rot (float): 旋转角度
+        output_size (int): 变换后输出的大小
+        shift (_type_, optional): 缩放. Defaults to np.array([0, 0], dtype=np.float32).
         inv (int, optional): 1则进行逆向转换（dst->src），0则正转换（src->dst）. Defaults to 0.
 
     Returns:
-        _type_: _description_
+        array[2,3]: 仿射变换矩阵
     """
     
     # 将scale转换为array类型
     if not isinstance(scale, np.ndarray) and not isinstance(scale, list):
         print(scale)
         scale = np.array([scale, scale])
-
+        
+    # 这个200是官方定的
     scale_tmp = scale * 200.0 # scale*200.0 人体框的高宽为scale_tmp
     src_w = scale_tmp[0]
     dst_w = output_size[0]
     dst_h = output_size[1]
 
     rot_rad = np.pi * rot / 180 # 转为弧度值
-    #? 为什么*-0.5
+    #! Q：为什么*-0.5
+    #! A：就是为了取以人体框中心点为圆心,以w/2为半径的圆周上的一点
     src_dir = get_dir([0, src_w * -0.5], rot_rad) # 做旋转
     dst_dir = np.array([0,  dst_w * -0.5], np.float32)
 
     src = np.zeros((3, 2), dtype=np.float32)
     dst = np.zeros((3, 2), dtype=np.float32)
     # (scale_tmp * shift)一定为正，即向右下等比移动
-    src[0, :] = center + scale_tmp * shift # 点1 - 经过缩放和偏移的中心点
-    src[1, :] = center + src_dir + scale_tmp * shift # 点2 - 
-    dst[0, :] = [dst_w * 0.5, dst_h * 0.5]
-    dst[1, :] = np.array([dst_w * 0.5, dst_h * 0.5]) + dst_dir
+    src[0, :] = center + scale_tmp * shift # 点1 - 缩放后的人体框中心点坐标
+    src[1, :] = center + src_dir + scale_tmp * shift # 点2 - 以人体框中心点为圆心,以w/2为半径的圆周上的一点
+    #! 这里保证了仿射变换后其中心点坐标在图像中心，且保证人体框也在变换后的图像中
+    dst[0, :] = [dst_w * 0.5, dst_h * 0.5] # 点1 - 变换后的人体框中心点坐标
+    dst[1, :] = np.array([dst_w * 0.5, dst_h * 0.5]) + dst_dir # 点2 - 以人体框中心点，偏移dst_w*-0.5
 
-    src[2:, :] = get_3rd_point(src[0, :], src[1, :])
-    dst[2:, :] = get_3rd_point(dst[0, :], dst[1, :])
+    src[2:, :] = get_3rd_point(src[0, :], src[1, :]) # 与上述两点垂直的一点
+    dst[2:, :] = get_3rd_point(dst[0, :], dst[1, :]) # 与上述两点垂直的一点
 
     # cv2.getAffineTransform(pts1,pts2) - 根据原图像的三个点的坐标，和变换后的三个点的坐标，找到对应的仿射变换矩阵
     if inv: # 是否进行逆转换
@@ -119,12 +122,30 @@ def get_affine_transform(
 
 
 def affine_transform(pt, t):
+    """对坐标点进行仿射变换
+
+    Args:
+        pt (array[2,]): 坐标点
+        t (array[2,3]): 仿射变换的矩阵
+
+    Returns:
+        array[2,]: 仿射变换后的坐标点
+    """
     new_pt = np.array([pt[0], pt[1], 1.]).T
     new_pt = np.dot(t, new_pt)
     return new_pt[:2]
 
 
 def get_3rd_point(a, b):
+    """计算与a,b垂直的，特定位置的点的坐标
+
+    Args:
+        a (array[2,]): a点坐标
+        b (array[2,]): b点坐标
+
+    Returns:
+        array: 特定点坐标
+    """
     direct = a - b
     return b + np.array([-direct[1], direct[0]], dtype=np.float32)
 
@@ -134,7 +155,7 @@ def get_dir(src_point, rot_rad):
 
     Args:
         src_point (float): 待旋转的坐标点
-        rot_rad (_type_): 弧度值的旋转角度
+        rot_rad (float): 弧度值的旋转角度
 
     Returns:
         array: 旋转后的点

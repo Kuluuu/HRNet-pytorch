@@ -26,6 +26,20 @@ logger = logging.getLogger(__name__)
 
 def train(config, train_loader, model, criterion, optimizer, epoch,
           output_dir, tb_log_dir, writer_dict):
+    """_summary_
+
+    Args:
+        config (_type_): cfg配置文件
+        train_loader (_type_): 训练集的DataLoader
+        model (_type_): 模型
+        criterion (_type_): 损失函数
+        optimizer (_type_): 优化器
+        epoch (_type_): 训练到第epoch个
+        output_dir (_type_): 输出文件夹
+        tb_log_dir (_type_): 日志文件夹
+        writer_dict (_type_): tensorboard的writer_dict
+    """
+    # AverageMeter类 - 用来管理变量的更新
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -34,22 +48,25 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
     # switch to train mode
     model.train()
 
-    end = time.time()
+    end = time.time() # 返回当前时间的时间戳
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
-        # measure data loading time
+        # measure data loading time （计算数据加载的时间）
         data_time.update(time.time() - end)
 
         # compute output
         outputs = model(input)
 
+        # 如果pin_memory=True的话，将数据放入GPU的时候，也应该把non_blocking打开，这样就只把数据放入GPU而不取出，访问时间会大大减少。
         target = target.cuda(non_blocking=True)
         target_weight = target_weight.cuda(non_blocking=True)
 
-        if isinstance(outputs, list):
+        # outputs - (bs, num_joints, hm_size, hm_size)
+        if isinstance(outputs, list): # JointsMSELoss中有output.size(0)，list会报错，需要特殊处理
+            #? 这里传入outputs[0]那么就是(16,64,64)，JointsMSELoss完全不能用啊？
             loss = criterion(outputs[0], target, target_weight)
             for output in outputs[1:]:
                 loss += criterion(output, target, target_weight)
-        else:
+        else: # 单个output
             output = outputs
             loss = criterion(output, target, target_weight)
 
@@ -60,17 +77,17 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         loss.backward()
         optimizer.step()
 
-        # measure accuracy and record loss
+        # measure accuracy and record loss 更新loss
         losses.update(loss.item(), input.size(0))
-
-        _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(),
+        
+        _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(), # 计算精度放到cpu里进行
                                          target.detach().cpu().numpy())
         acc.update(avg_acc, cnt)
 
-        # measure elapsed time
+        # measure elapsed time 计算1组batch的计算时间
         batch_time.update(time.time() - end)
-        end = time.time()
-
+        end = time.time() # 更新基准时间
+        
         if i % config.PRINT_FREQ == 0:
             msg = 'Epoch: [{0}][{1}/{2}]\t' \
                   'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
@@ -83,6 +100,7 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                       data_time=data_time, loss=losses, acc=acc)
             logger.info(msg)
 
+            # tensorboard
             writer = writer_dict['writer']
             global_steps = writer_dict['train_global_steps']
             writer.add_scalar('train_loss', losses.val, global_steps)
@@ -90,6 +108,7 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
             writer_dict['train_global_steps'] = global_steps + 1
 
             prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
+            # pred*4 - 映射预测的关节点坐标到输入图像的大小上
             save_debug_images(config, input, meta, target, pred*4, output,
                               prefix)
 
@@ -106,7 +125,7 @@ def validate(config, val_loader, val_dataset, model, criterion, output_dir,
         criterion (_type_): 损失函数
         output_dir (str): 输出的文件路径
         tb_log_dir (str): 日志的文件路径
-        writer_dict (_type_, optional): _description_. Defaults to None.
+        writer_dict (_type_, optional): tensorboard的writer_dict. Defaults to None.
 
     Returns:
         _type_: _description_
@@ -274,17 +293,28 @@ def _print_name_value(name_value, full_arch_name):
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
+    """
+    Computes and stores the average and current value
+    其中包含val, avg, sum, count四个成员
+    """
     def __init__(self):
         self.reset()
 
     def reset(self):
+        """将所有值重置为0（val, avg, sum, count = 0）
+        """
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
 
     def update(self, val, n=1):
+        """更新val的值
+
+        Args:
+            val (_type_): 新的val值
+            n (int, optional): val的个数. Defaults to 1.
+        """
         self.val = val
         self.sum += val * n
         self.count += n

@@ -35,12 +35,12 @@ class MPIIDataset(JointsDataset):
         self.num_joints = 16
         # 配对的关节，(0-5 rl ankle, 1-4 rl knee, 2-3 rl hip, 10-15 rl wrist, 11-14 rl elbow, 12-13 rl shoulder)
         self.flip_pairs = [[0, 5], [1, 4], [2, 3], [10, 15], [11, 14], [12, 13]]
-        self.parent_ids = [1, 2, 6, 6, 3, 4, 6, 6, 7, 8, 11, 12, 7, 7, 13, 14]
+        self.parent_ids = [1, 2, 6, 6, 3, 4, 6, 6, 7, 8, 11, 12, 7, 7, 13, 14] # 组建关节点的骨架关系
 
-        self.upper_body_ids = (7, 8, 9, 10, 11, 12, 13, 14, 15)
-        self.lower_body_ids = (0, 1, 2, 3, 4, 5, 6)
+        self.upper_body_ids = (7, 8, 9, 10, 11, 12, 13, 14, 15) # 上半身关节点坐标
+        self.lower_body_ids = (0, 1, 2, 3, 4, 5, 6) # 下半身关节点坐标
 
-        self.db = self._get_db()
+        self.db = self._get_db() # 获取处理后的数据集
 
         if is_train and cfg.DATASET.SELECT_DATA: #? 有什么用
             self.db = self.select_data(self.db)
@@ -70,6 +70,8 @@ class MPIIDataset(JointsDataset):
             s = np.array([a['scale'], a['scale']], dtype=np.float)
 
             # Adjust center/scale slightly to avoid cropping limbs
+            #? 这里有什么作用？
+            # 因为mpii直接默认bbox为正方形，而可能真正的bbox是矩形，调成正方形后可能会把人体某些部分给裁掉，所以直接把正方形扩大
             if c[0] != -1: # 中心点坐标合法
                 c[1] = c[1] + 15 * s[1]
                 s = s * 1.25
@@ -80,7 +82,7 @@ class MPIIDataset(JointsDataset):
 
             joints_3d = np.zeros((self.num_joints, 3), dtype=np.float)
             joints_3d_vis = np.zeros((self.num_joints,  3), dtype=np.float)
-            if self.image_set != 'test': # test无关节点位置的GT
+            if self.image_set != 'test': # test无关节点位置的GT，因此需要判断
                 joints = np.array(a['joints'])
                 joints[:, 0:2] = joints[:, 0:2] - 1 # 将所有关节点坐标原点转换为(0, 0)
                 joints_vis = np.array(a['joints_vis'])
@@ -97,7 +99,7 @@ class MPIIDataset(JointsDataset):
             gt_db.append(
                 {
                     'image': os.path.join(self.root, image_dir, image_name), # 图片路径
-                    'center': c,
+                    'center': c, 
                     'scale': s,
                     'joints_3d': joints_3d,
                     'joints_3d_vis': joints_3d_vis,

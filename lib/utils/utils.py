@@ -58,14 +58,24 @@ def create_logger(cfg, cfg_name, phase='train'):
 
 
 def get_optimizer(cfg, model):
+    """获得迭代优化器
+
+    Args:
+        cfg (_type_): cfg文件
+        model (_type_): 模型
+
+    Returns:
+        _type_: 迭代优化器
+    """
     optimizer = None
+    # 由cfg文件决定采用什么优化器
     if cfg.TRAIN.OPTIMIZER == 'sgd':
         optimizer = optim.SGD(
             model.parameters(),
             lr=cfg.TRAIN.LR,
-            momentum=cfg.TRAIN.MOMENTUM,
+            momentum=cfg.TRAIN.MOMENTUM, # 动量参数
             weight_decay=cfg.TRAIN.WD,
-            nesterov=cfg.TRAIN.NESTEROV
+            nesterov=cfg.TRAIN.NESTEROV # 是否采用nesterov动量SGD
         )
     elif cfg.TRAIN.OPTIMIZER == 'adam':
         optimizer = optim.Adam(

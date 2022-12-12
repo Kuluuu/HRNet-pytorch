@@ -154,9 +154,11 @@ def main():
     
     """ pin_memory
         通常情况下，数据在内存中要么以锁页的方式存在，要么保存在虚拟内存(磁盘)中。
+        锁页内存存放的内容在任何情况下都不会与主机的虚拟内存进行交换（注：虚拟内存就是硬盘），而不锁页内存在主机内存不足时，数据会存放在虚拟内存中。
         pin_memory设置为True后，数据直接保存在锁页内存中，后续直接传入cuda；
         否则需要先从虚拟内存中传入锁页内存中，再传入cuda，
         这样就比较耗时了，但是对于内存的大小要求比较高。
+        显卡中的显存全部是锁页内存，当计算机的内存充足的时候，可以设置pin_memory=True。
     """
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -176,12 +178,12 @@ def main():
     best_perf = 0.0
     best_model = False
     last_epoch = -1
-    optimizer = get_optimizer(cfg, model)
-    begin_epoch = cfg.TRAIN.BEGIN_EPOCH
+    optimizer = get_optimizer(cfg, model) # 获取优化器
+    begin_epoch = cfg.TRAIN.BEGIN_EPOCH # 开始的epoch数
     checkpoint_file = os.path.join(
         final_output_dir, 'checkpoint.pth'
     )
-
+    
     if cfg.AUTO_RESUME and os.path.exists(checkpoint_file):
         logger.info("=> loading checkpoint '{}'".format(checkpoint_file))
         checkpoint = torch.load(checkpoint_file)
@@ -194,6 +196,13 @@ def main():
         logger.info("=> loaded checkpoint '{}' (epoch {})".format(
             checkpoint_file, checkpoint['epoch']))
 
+    """
+    torch.optim.lr_scheduler.MultiStepLR - 表示按需求有外部设置调整学习率
+    + optimizer - 优化器
+    + milestones - lr改变时的epoch数目
+    + gamma - 学习率调整倍数，默认为0.1，即下降10倍,
+    + last_epoch - 从last_start开始后记录了多少个epoch，默认为−1
+    """
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, cfg.TRAIN.LR_STEP, cfg.TRAIN.LR_FACTOR,
         last_epoch=last_epoch
